@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catálogo de Compra — Top Neumáticos</title>
+<style>
+  :root {
+    --azul: #1a3c6e; --azul-oscuro: #12305c; --azul-claro: #eef3fa;
+    --gris: #6b7280; --gris-claro: #f3f4f6; --borde: #e5e7eb;
+    --verde: #178a4c; --verde-oscuro: #12703d; --rojo: #c0392b;
+    --sombra: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    margin: 0; background: #f7f8fa; color: #1f2430; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .card {
+    background: #fff; border: 1px solid var(--borde); border-radius: 12px; box-shadow: var(--sombra);
+    padding: 32px; max-width: 420px; width: 100%;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; color: var(--azul); }
+  p.sub { font-size: 13px; color: var(--gris); margin: 0 0 22px; }
+  label { display: block; font-size: 12px; font-weight: 700; color: var(--gris); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+  input[type=password], input[type=text] {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--borde); border-radius: 8px;
+    font-size: 14px; margin-bottom: 14px;
+  }
+  input:focus { outline: none; border-color: var(--azul); }
+  .chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #374151; margin-bottom: 20px; }
+  .chk input { width: 15px; height: 15px; accent-color: var(--azul); }
+  button {
+    width: 100%; background: var(--azul); color: #fff; border: none; padding: 12px;
+    border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; transition: background .15s;
+  }
+  button:hover { background: var(--azul-oscuro); }
+  button:disabled { background: var(--gris); cursor: not-allowed; }
+  .estado { margin-top: 14px; font-size: 13px; text-align: center; min-height: 18px; }
+  .estado.error { color: var(--rojo); }
+  .estado.ok { color: var(--verde-oscuro); }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>Catálogo de Compra</h1>
+  <p class="sub">Top Neumáticos S.R.L. — TOWNHALL / SUNFULL</p>
+
+  <label for="clave">Clave de acceso</label>
+  <input type="password" id="clave" placeholder="Ingresá la clave">
+
+  <label class="chk"><input type="checkbox" id="recordar"> Recordar en este navegador</label>
+
+  <button id="btn-abrir">Abrir catálogo</button>
+  <div class="estado" id="estado"></div>
+</div>
+
+<script>
+  // Ajustar a la URL de producción del webhook una vez que el workflow esté Activo en n8n
+  // (mientras se prueba, usar la URL de test: /webhook-test/Catalogo-de-compras)
+  const WEBHOOK_URL = 'https://envy-recollect-last.ngrok-free.dev/webhook/Catalogo-de-compras';
+  const HEADER_NAME = 'X-Auth-Key';
+  const STORAGE_KEY = 'catalogo_compra_clave';
+
+  const inputClave = document.getElementById('clave');
+  const chkRecordar = document.getElementById('recordar');
+  const btn = document.getElementById('btn-abrir');
+  const estado = document.getElementById('estado');
+
+  // Precarga la clave si estaba guardada
+  const claveGuardada = localStorage.getItem(STORAGE_KEY);
+  if (claveGuardada) {
+    inputClave.value = claveGuardada;
+    chkRecordar.checked = true;
+  }
+
+  function setEstado(msg, tipo) {
+    estado.textContent = msg;
+    estado.className = 'estado' + (tipo ? ' ' + tipo : '');
+  }
+
+  async function abrirCatalogo() {
+    const clave = inputClave.value.trim();
+    if (!clave) {
+      setEstado('Ingresá la clave de acceso.', 'error');
+      return;
+    }
+
+    if (chkRecordar.checked) {
+      localStorage.setItem(STORAGE_KEY, clave);
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+
+    btn.disabled = true;
+    setEstado('Generando catálogo…');
+
+    try {
+      const resp = await fetch(WEBHOOK_URL, {
+        method: 'GET',
+        headers: { [HEADER_NAME]: clave }
+      });
+
+      if (resp.status === 401 || resp.status === 403) {
+        setEstado('Clave incorrecta.', 'error');
+        btn.disabled = false;
+        return;
+      }
+      if (!resp.ok) {
+        setEstado('Error del servidor (' + resp.status + ').', 'error');
+        btn.disabled = false;
+        return;
+      }
+
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setEstado('Catálogo abierto en una nueva pestaña.', 'ok');
+    } catch (err) {
+      setEstado('No se pudo conectar al servidor. ¿Está corriendo n8n/ngrok?', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  btn.addEventListener('click', abrirCatalogo);
+  inputClave.addEventListener('keydown', e => { if (e.key === 'Enter') abrirCatalogo(); });
+</script>
+
+</body>
+</html>
